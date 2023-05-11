@@ -1,0 +1,231 @@
+//hostsAutoUpdater
+import fonts.fontAwesome;
+import win.ui;
+import win.ui.atom;
+/*DSG{{*/
+var winform = win.form(text="HostsAutoUpdater - Hosts网速优化工具";right=660;bottom=476;bgcolor=16777215;border="none";max=false)
+winform.add(
+OpenHosts={cls="plus";text='\uF07C 查看hosts文件';left=485;top=77;right=642;bottom=106;bgcolor=-6371181;font=LOGFONT(h=-15;name='FontAwesome';charset=0);notify=1;z=10};
+bk={cls="bk";left=2;top=0;right=658;bottom=32;bgcolor=16777215;forecolor=8882055;linearGradient=0;z=3};
+bk2={cls="bk";text="HostsAutoUpdater - Hosts网速优化工具";left=46;top=4;right=409;bottom=26;align="left";color=4934475;z=4};
+bk3={cls="bk";text='\uF0E8';left=16;top=6;right=38;bottom=24;color=4934475;font=LOGFONT(h=-18;name='FontAwesome');z=5};
+edIpList={cls="edit";left=26;top=75;right=470;bottom=219;edge=1;multiline=1;z=9};
+edLogs={cls="edit";left=26;top=273;right=635;bottom=459;edge=1;multiline=1;z=11};
+lbTimer={cls="static";text="0 秒( 已禁用 )";left=411;top=243;right=496;bottom=263;transparent=1;z=8};
+static={cls="static";text="本通过公共DNS解析域名，并更新到HOSTS文件，以提高解析速度";left=49;top=50;right=635;bottom=86;color=3947580;font=LOGFONT(h=-13);transparent=1;z=1};
+static3={cls="static";text="自动刷新间隔:";left=20;top=241;right=104;bottom=261;align="right";transparent=1;z=7};
+tbTimer={cls="plus";left=114;top=244;right=399;bottom=259;bgcolor=-2512093;border={radius=-1};color=23807;foreRight=15;forecolor=-14911489;paddingBottom=5;paddingTop=5;z=6};
+updateHosts={cls="plus";text='\uF07C 更新hosts文件';left=485;top=115;right=642;bottom=144;bgcolor=-6371181;font=LOGFONT(h=-15;name='FontAwesome';charset=0);notify=1;z=2}
+)
+/*}}*/
+
+var atom,hwnd = winform.atom("A51A2F96-15B8-7E4F-AE4E-4AA84AC6B5AA.HostsAutoUpdater");
+if(!atom){
+	win.setForeground(hwnd);
+	win.quitMessage();	
+	return;
+}
+
+import process;
+import fsys.hosts;
+
+var dnsServer = "180.76.76.76";
+
+function myLog(s){		
+	import time;
+	var newLog = "["+tostring(time())+"] "+s;
+	winform.edLogs.text = newLog + '\r\n' + winform.edLogs.text;
+	//winform.edLogs.log(newLog,'\r\n');
+	winform.edLogs.vScroll() ;
+}
+
+function myResolveIp(host){
+	import process;
+	if (!#host){
+		return "";
+	}
+	var prcs = process.popen.cmd("nslookup "+host+" "+dnsServer);
+	var resultText = prcs.readAll();
+	var lines = string.matches(resultText,"\d+\.\d+\.\d+\.\d+");
+	var ip = lines[#lines][1];
+	if (ip==dnsServer){
+		ip = "";
+	}
+	return ip;
+}
+
+var lastSaveText = "";
+function saveConfigs(){
+	import config;
+	var newSaveText = string.trim(winform.edIpList.text);
+	if (lastSaveText!=newSaveText){
+		config.meta.hosts = newSaveText;
+		config.meta.save();
+		lastSaveText = newSaveText;
+		myLog("自动保存到配置文件");
+	}
+}
+
+winform.updateHosts.skin(
+	background = { 
+		hover = "/res/images/btn-hover.png";
+		focus = "/res/images/btn-focus.jpg";
+		active = "/res/images/btn-active.png";
+		disabled = "/res/images/btn-disabled.png"; 
+	}
+)
+winform.updateHosts.oncommand = function(id,event){
+	saveConfigs();
+	
+	var hostIps = {}
+	
+	//如果为空，则加载配置文件
+	if (!#winform.edIpList.text){
+		import config;
+		winform.edIpList.text = config.meta.hosts;
+		lastSaveText = config.meta.hosts;
+	}
+
+	for(s in string.each(winform.edIpList.text,".*",'\r\n')){
+		var host = string.trim(s);
+		var ip = myResolveIp(host);
+		myLog(host+" -> "+ip);
+		if (#ip){
+			hostIps[host]=ip;
+		}
+	}
+	
+	var count = #table.keys(hostIps);
+	if (count){		
+		import fsys.hosts;
+		fsys.hosts.ownCacls();
+		fsys.hosts.update(hostIps);	
+		myLog("更新hosts文件成功，条数："+ count);
+	}
+}
+
+
+import win.ui.simpleWindow2;
+win.ui.simpleWindow2(winform);
+
+import win.ui.menu;
+import win.util.tray;
+winform.tray = win.util.tray(winform);
+winform.onTrayMessage = {
+	[0x205/*_WM_RBUTTONUP*/  ] = function(wParam){ 
+		import win.ui.menu; 
+		var popmenu = win.ui.popmenu(winform);
+		win.setForeground(winform.hwnd);
+		
+		if(!_STUDIO_INVOKED){
+			import sys.runAsTask;
+			var sysTask = sys.runAsTask("HostsAutoUpdater","Hosts网速优化工具")
+			var id = popmenu.add('设为开机启动',function(id){ 
+				if(sysTask.get()){
+					sysTask.delete();
+				}
+				else {
+					sysTask.register("/tray");
+				}	
+			});
+			
+			popmenu.check(id,!!sysTask.get(),0/*_MF_BYCOMMAND*/);
+		}
+
+		popmenu.add('退出',function(id){
+			winform.onClose = null;
+			winform.close();
+		});
+		popmenu.popup();
+	};
+	[0x202/*_WM_LBUTTONUP*/] = function(wParam){
+		winform.show(true);
+		win.setForeground(winform.hwnd);
+		
+		if(!winform.updateHosts.disabled){
+			winform.updateHosts.oncommand();
+		} 
+	}; 
+}
+
+winform.tbTimer.setTrackbarRange(0,24);
+winform.tbTimer.skin({
+	background={
+		default=0xFF23ABD9
+	};
+	foreground={
+		default=0xFFFF771C;
+		hover=0xFFFF6600
+	};
+	color={
+		default=0xFFFF5C00;
+		hover=0xFFFF6600
+	}
+})
+
+import config;
+winform.tbTimer.onPosChanged = function( interval,triggeredByUser ){
+	winform.lbTimer.text = (interval * 5) + " 秒";
+	if(!interval) winform.lbTimer.text = winform.lbTimer.text + "( 已禁用 )";
+	if(triggeredByUser){
+		config.meta.interval = interval;
+		config.meta.save();
+	}
+	
+	if(interval != winform.githubInterval){
+		if(winform.githubTimer){
+			winform.clearInterval(winform.githubTimer); 
+		}
+		
+		if(interval){
+			winform.githubTimer = winform.setInterval( 
+				function(){
+					if(!winform.updateHosts.disabled){
+						winform.updateHosts.oncommand(,true);
+					}
+				},interval * 5000 
+			)			
+		}
+	}
+}
+winform.tbTimer.progressPos = config.meta.interval || 0;
+
+winform.onMinimize = function(lParam){
+	winform.show(false);
+	return true;
+}
+
+winform.onClose = function(hwnd,message,wParam,lParam){
+	saveConfigs();
+	winform.show(false);
+	return true;
+}
+
+if(!_ARGV.tray){ 
+	winform.show();
+	
+	if(config.meta.interval){
+		winform.updateHosts.oncommand(,true);
+	}
+	else {
+		winform.updateHosts.oncommand();
+	}
+}
+else {
+	winform.updateHosts.oncommand(,true);
+}
+
+winform.OpenHosts.skin(
+	background = { 
+		hover = "/res/images/btn-hover.png";
+		focus = "/res/images/btn-focus.jpg";
+		active = "/res/images/btn-active.png";
+		disabled = "/res/images/btn-disabled.png"; 
+	}
+)
+winform.OpenHosts.oncommand = function(id,event){
+	import process;
+	process.execute("notepad.exe",fsys.hosts.path,"runas")
+}
+
+win.loopMessage();
