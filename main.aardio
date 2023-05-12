@@ -34,9 +34,12 @@ var dnsServer = "180.76.76.76";
 function myLog(s){		
 	import time;
 	var newLog = "["+tostring(time())+"] "+s;
+	if (#winform.edLogs.text>10000){
+		winform.edLogs.text=string.slice(winform.edLogs.text,0,1000);
+	}
 	winform.edLogs.text = newLog + '\r\n' + winform.edLogs.text;
 	//winform.edLogs.log(newLog,'\r\n');
-	winform.edLogs.vScroll() ;
+	//winform.edLogs.vScroll() ;
 }
 
 function myResolveIp(host){
