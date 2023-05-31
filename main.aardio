@@ -9,10 +9,12 @@ OpenHosts={cls="plus";text='\uF07C 查看hosts文件';left=485;top=77;right=642;
 bk={cls="bk";left=2;top=0;right=658;bottom=32;bgcolor=16777215;forecolor=8882055;linearGradient=0;z=3};
 bk2={cls="bk";text="HostsAutoUpdater - Hosts网速优化工具";left=46;top=4;right=409;bottom=26;align="left";color=4934475;z=4};
 bk3={cls="bk";text='\uF0E8';left=16;top=6;right=38;bottom=24;color=4934475;font=LOGFONT(h=-18;name='FontAwesome');z=5};
+cbAutoClose={cls="checkbox";text="Checkbox";left=502;top=245;right=516;bottom=259;z=12};
 edIpList={cls="edit";left=26;top=75;right=470;bottom=219;edge=1;multiline=1;z=9};
 edLogs={cls="edit";left=26;top=273;right=635;bottom=459;edge=1;multiline=1;z=11};
 lbTimer={cls="static";text="0 秒( 已禁用 )";left=411;top=243;right=496;bottom=263;transparent=1;z=8};
 static={cls="static";text="本通过公共DNS解析域名，并更新到HOSTS文件，以提高解析速度";left=49;top=50;right=635;bottom=86;color=3947580;font=LOGFONT(h=-13);transparent=1;z=1};
+static2={cls="static";text="更新3次自动退出";left=525;top=244;right=641;bottom=265;notify=1;transparent=1;z=13};
 static3={cls="static";text="自动刷新间隔:";left=20;top=241;right=104;bottom=261;align="right";transparent=1;z=7};
 tbTimer={cls="plus";left=114;top=244;right=399;bottom=259;bgcolor=-2512093;border={radius=-1};color=23807;foreRight=15;forecolor=-14911489;paddingBottom=5;paddingTop=5;z=6};
 updateHosts={cls="plus";text='\uF07C 更新hosts文件';left=485;top=115;right=642;bottom=144;bgcolor=-6371181;font=LOGFONT(h=-15;name='FontAwesome';charset=0);notify=1;z=2}
@@ -30,6 +32,8 @@ import process;
 import fsys.hosts;
 
 var dnsServer = "180.76.76.76";
+
+var updateCount = 0;
 
 function myLog(s){		
 	import time;
@@ -185,6 +189,11 @@ winform.tbTimer.onPosChanged = function( interval,triggeredByUser ){
 				function(){
 					if(!winform.updateHosts.disabled){
 						winform.updateHosts.oncommand(,true);
+						updateCount++;
+					}
+					if(updateCount>=3 && winform.cbAutoClose.checked){
+						winform.onClose = null;
+						winform.close();
 					}
 				},interval * 5000 
 			)			
@@ -192,6 +201,7 @@ winform.tbTimer.onPosChanged = function( interval,triggeredByUser ){
 	}
 }
 winform.tbTimer.progressPos = config.meta.interval || 0;
+winform.cbAutoClose.checked = config.meta.autoclose || 0;
 
 winform.onMinimize = function(lParam){
 	winform.show(false);
@@ -229,6 +239,15 @@ winform.OpenHosts.skin(
 winform.OpenHosts.oncommand = function(id,event){
 	import process;
 	process.execute("notepad.exe",fsys.hosts.path,"runas")
+}
+
+winform.static2.oncommand = function(id,event){
+	
+}
+
+winform.cbAutoClose.oncommand = function(id,event){
+	config.meta.autoclose = winform.cbAutoClose.checked;
+	config.meta.save();	
 }
 
 win.loopMessage();
