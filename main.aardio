@@ -31,6 +31,9 @@ if(!atom){
 import process;
 import fsys.hosts;
 
+import fsys.log;
+var logutil=fsys.log( ..thread.get("fsys.log.default.path"):"/logs/run.log" )
+
 var dnsServer = "180.76.76.76";
 
 var updateCount = 0;
@@ -70,8 +73,21 @@ function saveConfigs(){
 		config.meta.save();
 		lastSaveText = newSaveText;
 		myLog("自动保存到配置文件");
+		logInfo("保存到配置文件, "+newSaveText);
 	}
 }
+
+function logInfo(s){
+	logutil.print("["+tostring(time.now())+"] "+s);
+}
+
+function exit(){
+	logInfo("exit");
+	winform.onClose = null;
+	winform.close();
+}
+
+logInfo("launch");
 
 winform.updateHosts.skin(
 	background = { 
@@ -108,6 +124,7 @@ winform.updateHosts.oncommand = function(id,event){
 		fsys.hosts.ownCacls();
 		fsys.hosts.update(hostIps);	
 		myLog("更新hosts文件成功，条数："+ count);
+		updateCount++;
 	}
 }
 
@@ -140,8 +157,7 @@ winform.onTrayMessage = {
 		}
 
 		popmenu.add('退出',function(id){
-			winform.onClose = null;
-			winform.close();
+			exit();
 		});
 		popmenu.popup();
 	};
@@ -189,11 +205,9 @@ winform.tbTimer.onPosChanged = function( interval,triggeredByUser ){
 				function(){
 					if(!winform.updateHosts.disabled){
 						winform.updateHosts.oncommand(,true);
-						updateCount++;
 					}
 					if(updateCount>=3 && winform.cbAutoClose.checked){
-						winform.onClose = null;
-						winform.close();
+						exit();
 					}
 				},interval * 5000 
 			)			
