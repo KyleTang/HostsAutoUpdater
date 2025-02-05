@@ -13,7 +13,8 @@ cbAutoClose={cls="checkbox";text="Checkbox";left=502;top=245;right=516;bottom=25
 edIpList={cls="edit";left=26;top=75;right=470;bottom=219;edge=1;multiline=1;z=9};
 edLogs={cls="edit";left=26;top=273;right=635;bottom=459;edge=1;multiline=1;z=11};
 lbTimer={cls="static";text="0 秒( 已禁用 )";left=411;top=243;right=496;bottom=263;transparent=1;z=8};
-static={cls="static";text="本通过公共DNS解析域名，并更新到HOSTS文件，以提高解析速度";left=49;top=50;right=635;bottom=86;color=3947580;font=LOGFONT(h=-13);transparent=1;z=1};
+static={cls="static";text="本通过公共DNS解析域名，并更新到HOSTS文件，以提高解析速度
+可在 ip 后增加#ip指定dns ip";left=30;top=37;right=635;bottom=86;color=3947580;font=LOGFONT(h=-13);transparent=1;z=1};
 static2={cls="static";text="更新3次自动退出";left=525;top=244;right=641;bottom=265;notify=1;transparent=1;z=13};
 static3={cls="static";text="自动刷新间隔:";left=20;top=241;right=104;bottom=261;align="right";transparent=1;z=7};
 tbTimer={cls="plus";left=114;top=244;right=399;bottom=259;bgcolor=-2512093;border={radius=-1};color=23807;foreRight=15;forecolor=-14911489;paddingBottom=5;paddingTop=5;z=6};
@@ -30,14 +31,20 @@ if(!atom){
 
 import process;
 import fsys.hosts;
+import console;
 
 import fsys.log;
 var logutil=fsys.log( ..thread.get("fsys.log.default.path"):"/logs/run.log" )
 
-var dnsServer = "180.76.76.76";
-
+//全局配置
+var version = "1.0";
+var openDnsServer = "180.76.76.76";
 var updateCount = 0;
 
+winform.bk2.text = winform.bk2.text + ", version="+version;
+winform.static.text = string.replace(winform.static.text,"DNS","DNS("+openDnsServer+")")
+
+//记录日志
 function myLog(s){		
 	import time;
 	var newLog = "["+tostring(time())+"] "+s;
@@ -49,21 +56,77 @@ function myLog(s){
 	//winform.edLogs.vScroll() ;
 }
 
-function myResolveIp(host){
+//ping ip是否通
+function pingIp(host){
+	var subprocess = ..process.popen("ping " + host + " -n 1") 
+	var str = subprocess.read(-1);
+	subprocess.close(); 
+
+	ttl = ..string.match(str,"TTL\=(\d+)" )
+	ttl = tonumber(ttl) 
+ 	if(!ttl)
+ 		return false;
+ 	return true;
+}
+
+//解析host返回ip， host=www.baidu.com 或指定dns server，host=www.baidu.com#192.168.1.1 ，如果指定优先dns server，则能访问通，则使用，访问不通，则使用open dns server
+function myResolveIp(hostAndServer){
 	import process;
-	if (!#host){
-		return "";
+	if (!#hostAndServer){
+		//stringreturn "";
+		return  {"ip":""};
 	}
+	var host = hostAndServer;
+	var dnsServer = openDnsServer;
+	var hs = string.split(hostAndServer,'#');
+	if (#hs>0){
+		host = hs[1];
+
+		if (#hs>1){
+			var tmpDnsServer = hs[2];
+			if (pingIp(tmpDnsServer)){
+				dnsServer = tmpDnsServer;
+			}
+		}
+	}	
+	
 	var prcs = process.popen.cmd("nslookup "+host+" "+dnsServer);
 	var resultText = prcs.readAll();
 	var lines = string.matches(resultText,"\d+\.\d+\.\d+\.\d+");
-	var ip = lines[#lines][1];
-	if (ip==dnsServer){
-		ip = "";
+	
+	//输出里只有一个ip，则解析dns失败
+	var ip = "";
+	if (#lines==2){
+		ip = lines[2][1];
 	}
-	return ip;
+	return {"host":host, "ip":ip, "dnsServer":dnsServer};
 }
 
+//更新hosts
+function updateAllHosts(){
+		
+	var hostIps = {}
+	
+	for(s in string.each(winform.edIpList.text,".*",'\r\n')){
+		var hostAndServer = string.trim(s);
+		var ipRet = myResolveIp(hostAndServer);
+		logInfo(hostAndServer+" -> "+ipRet["ip"]+", use "+ipRet["dnsServer"]);
+		if (#ipRet["ip"]){
+			hostIps[ipRet["host"]]=ipRet["ip"];
+		}
+	}
+	
+	var count = #table.keys(hostIps);
+	if (count){		
+		import fsys.hosts;
+		fsys.hosts.ownCacls();
+		fsys.hosts.update(hostIps);	
+		myLog("更新hosts文件成功，条数："+ count);
+		updateCount++;
+	}	
+}
+
+//保存配置文件
 var lastSaveText = "";
 function saveConfigs(){
 	import config;
@@ -97,41 +160,41 @@ winform.updateHosts.skin(
 		disabled = "/res/images/btn-disabled.png"; 
 	}
 )
+
+//更新host按钮事件：先保存配置，然后读取配置，更新hosts解析
 winform.updateHosts.oncommand = function(id,event){
 	saveConfigs();
-	
-	var hostIps = {}
-	
+
 	//如果为空，则加载配置文件
 	if (!#winform.edIpList.text){
 		import config;
 		winform.edIpList.text = config.meta.hosts;
 		lastSaveText = config.meta.hosts;
 	}
-
-	for(s in string.each(winform.edIpList.text,".*",'\r\n')){
-		var host = string.trim(s);
-		var ip = myResolveIp(host);
-		myLog(host+" -> "+ip);
-		if (#ip){
-			hostIps[host]=ip;
-		}
-	}
 	
-	var count = #table.keys(hostIps);
-	if (count){		
-		import fsys.hosts;
-		fsys.hosts.ownCacls();
-		fsys.hosts.update(hostIps);	
-		myLog("更新hosts文件成功，条数："+ count);
-		updateCount++;
-	}
+	updateAllHosts();
+	
+	/*
+
+	import thread;
+	import console;
+	thread.invoke( 
+        //线程启动函数
+        function(winform){
+            import console;
+            console.dump(100);
+            updateAllHosts();
+            //winform.updateAllHosts();
+        },winform //窗口对象可作为参数传入工作线程
+    )
+    */
 }
 
 
 import win.ui.simpleWindow2;
 win.ui.simpleWindow2(winform);
 
+//托盘事件
 import win.ui.menu;
 import win.util.tray;
 winform.tray = win.util.tray(winform);
@@ -186,6 +249,7 @@ winform.tbTimer.skin({
 	}
 })
 
+//进度条更新事件
 import config;
 winform.tbTimer.onPosChanged = function( interval,triggeredByUser ){
 	winform.lbTimer.text = (interval * 5) + " 秒";
@@ -214,6 +278,8 @@ winform.tbTimer.onPosChanged = function( interval,triggeredByUser ){
 		}
 	}
 }
+
+//加载配置文件，初始化默认值
 winform.tbTimer.progressPos = config.meta.interval || 0;
 winform.cbAutoClose.checked = config.meta.autoclose || 0;
 
@@ -222,6 +288,7 @@ winform.onMinimize = function(lParam){
 	return true;
 }
 
+//窗口关闭时，自动保存配置
 winform.onClose = function(hwnd,message,wParam,lParam){
 	saveConfigs();
 	winform.show(false);
@@ -250,6 +317,8 @@ winform.OpenHosts.skin(
 		disabled = "/res/images/btn-disabled.png"; 
 	}
 )
+
+//使用记事本打开系统hosts文件
 winform.OpenHosts.oncommand = function(id,event){
 	import process;
 	process.execute("notepad.exe",fsys.hosts.path,"runas")
@@ -259,6 +328,7 @@ winform.static2.oncommand = function(id,event){
 	
 }
 
+//勾选自动关闭时，保存配置
 winform.cbAutoClose.oncommand = function(id,event){
 	config.meta.autoclose = winform.cbAutoClose.checked;
 	config.meta.save();	
